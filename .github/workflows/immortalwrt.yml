@@ -19,7 +19,6 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    # 1️⃣ 释放磁盘空间（必要）
     - name: Free disk space
       uses: coder-xiaomo/free-disk-space@main
       with:
@@ -31,7 +30,6 @@ jobs:
         docker-images: true
         swap-storage: true        
 
-    # 2️⃣ 最小化依赖
     - name: Install Build Dependencies
       run: |
         sudo -E apt-get -qq update
@@ -44,12 +42,10 @@ jobs:
         sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "Asia/Shanghai"
 
-    # 3️⃣ 克隆 ImmortalWrt
     - name: Clone ImmortalWrt
       run: |
-        git clone https://github.com/immortalwrt/immortalwrt.git immortalwrt
+        git clone --depth 1 https://github.com/immortalwrt/immortalwrt.git immortalwrt
 
-    # 4️⃣ 配置 feeds（官方 + kenzo）
     - name: Configure Feeds
       working-directory: immortalwrt
       run: |
@@ -60,44 +56,42 @@ jobs:
       run: |
         ./scripts/feeds update -a
 
-    # 6️⃣ 精确替换 golang（只替换 lang/golang）
     - name: Defconfig Feeds
       working-directory: immortalwrt
       run: |
         rm -rf feeds/packages/lang/golang
         git clone https://github.com/kenzok8/golang -b 1.25 feeds/packages/lang/golang
-        cp -f feeds/smpackage/.github/diy/default-settings package/emortal/default-settings/files/99-default-settings
         rm -rf feeds/packages/net/{alist,adguardhome,brook,gost,mosdns,redsocks*,smartdns,trojan*,v2ray*,xray*}
         rm -rf feeds/packages/luci/{luci-app-homeproxy,luci-app-openclash,luci-app-passwall}
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-
-    # 7️⃣ 应用 x86 旁路由 nft + Docker 配置
     - name: Apply Config
       working-directory: immortalwrt
       run: |
-        cp ../.config .config
+        cp ../immortalwrt.config .config
         make defconfig
 
-    # 8️⃣ 下载源码
     - name: Download Packages
       working-directory: immortalwrt
       run: |
         make download -j8
 
-    # 9️⃣ 编译
+    - name: Cache
+      uses: klever1988/cachewrtbuild@main
+      with:
+        ccache: 'true'
+        prefix: ${{ github.workspace }}/immortalwrt
+
     - name: Build Firmware
       working-directory: immortalwrt
       run: |
         make -j$(nproc) || make -j1 V=s
 
-    # 🔟 SSH 调试（可选）
     - name: SSH Debug
       if: github.event.inputs.ssh == 'true'
       uses: mxschmitt/action-tmate@v3
 
-    # 11️⃣ 上传固件
     - name: Upload Firmware
       uses: actions/upload-artifact@v4
       with:
